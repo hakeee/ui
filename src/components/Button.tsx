@@ -17,7 +17,15 @@ export const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        link: "text-primary underline-offset-4 hover:underline",
+        // Explicit bg-transparent, not just an absent bg-* class: this
+        // relies on shadcn's usual assumption that Tailwind preflight
+        // already zeroes out a <button>'s background, which doesn't hold
+        // for every consumer - a host app with its own pre-Tailwind
+        // global `button {}` rule (as Ebba's legacy CSS layer has) can
+        // out-rank preflight and paint this variant's background solid,
+        // which combined with `text-primary` renders as an unreadable
+        // solid-color button.
+        link: "bg-transparent text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",
