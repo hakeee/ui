@@ -29,8 +29,24 @@ export const buttonVariants = cva(
       },
       size: {
         default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
+        // py-2 added (shadcn's own upstream default omits it here,
+        // relying on the same broken preflight assumption described
+        // below for the icon size) - without it a consumer's legacy
+        // vertical button padding goes untouched by any utility class
+        // and wins outright, same bug as the icon size had, just
+        // survivable instead of invisible for a button with text.
+        sm: "h-9 rounded-md px-3 py-2",
+        lg: "h-11 rounded-md px-8 py-2",
+        // Square, content-less - for an icon-only button (pair with an
+        // aria-label, since there's no visible text for it to replace).
+        // p-0 explicit, same reasoning as the link variant's
+        // bg-transparent above: every other size here sets its own
+        // px-*/py-*, which is what actually out-ranks a consumer's
+        // legacy `button { padding: ... }` rule - omitting it isn't
+        // "no padding", it's "whatever the consumer's own button
+        // styling says", which can be wide enough on its own to squeeze
+        // a fixed h-9 w-9 box's content area to nothing and hide the icon.
+        icon: "h-9 w-9 p-0",
       },
     },
     defaultVariants: {
