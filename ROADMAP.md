@@ -35,31 +35,45 @@ visual direction was specified yet, trimmed to only the CSS variables
 this component set actually uses (no `accent`, `popover`, `chart-*`, etc.
 - add them when a component actually needs them, not speculatively).
 
-## v0.2 - HodyPesTracker integration (next)
+## v0.2 - Ebba integration (done, all 9 screens)
+
+Added `Textarea` (Capture, Timeline's entry edit) along the way - the
+one gap found during v0.1 that actually blocked a screen. Ebba had no
+Tailwind at all going in; added `@tailwindcss/vite` to `apps/web` and
+bridged this package's theme tokens (`--primary`, `--ring`, `--border`,
+etc.) onto Ebba's own `--accent`/`--bg`/`--border` variables via an
+unlayered `:root` override in Ebba's own `index.css` - no changes
+needed here, since components read theme values from CSS custom
+properties at runtime. That's also where a real bug turned up: Ebba's
+pre-Tailwind CSS was unlayered, which beats *any* Tailwind/this
+package's class regardless of specificity - fixed with an explicit
+`@layer legacy, theme, base, components, utilities;` order statement on
+Ebba's side (a documented Tailwind v4 pattern, not a workaround). Every
+plain button/input/textarea/banner across all 9 of Ebba's screens now
+goes through `Button`/`Input`/`Textarea`/`Alert`. Deliberately left
+alone: the calendar date picker, chart/heatmap/cooccurrence SVGs, tag
+chips, native `<select>`s, and nav tabs - bespoke layout, or lacking a
+library equivalent (no `Select`/`Tabs` yet - see v0.4).
+
+## v0.3 - HodyPesTracker integration (next)
 
 Replace `web/src/components/ui/{Button,Card,Modal,SavedBadge}.tsx` with
 this package's `Button`/`Card`/`Dialog`/`Badge`, updating call sites in
 `src/pages/*.tsx` and `src/components/{Calendar,EntryModal}`. Lower risk
-than Ebba - that app is already on Tailwind v4, so this is a straight
-swap, not a styling-system migration too.
-
-## v0.3 - Ebba integration (the actual migration)
-
-Ebba has no Tailwind today - all styling is hand-written CSS
-(`apps/web/src/index.css`, 1184 lines, 111 top-level classes across 9
-screens). Scoped per-screen, not as one rewrite: add Tailwind v4 +
-`@hakeee/ui` to `apps/web`, then convert screens one at a time (buttons/
-banners/inputs onto this package's components, that screen's own layout
-onto inline Tailwind utilities), starting with `Login`/`Unlock`/
-`Settings`. Deliberately leaves `Trends`/`Timeline`'s chart/calendar/
-cooccurrence-bar CSS alone - that's bespoke data-visualization layout,
-not something a component library should own.
+than Ebba was - that app is already on Tailwind v4, so this is a
+straight swap, not a styling-system migration too. Will also be the
+first real test of whether this package's theme-token bridge pattern
+(see v0.2) generalizes, or whether HodyPesTracker wants Ebba's green
+accent, its own `sky`/`slate` Tailwind palette, or something new.
 
 ## v0.4 - stretch (not started)
 
-Whatever both apps' real usage surfaces next - `Tabs` (Ebba's bottom nav
-bar), `Select` (its tag-merge dropdown), `Toast` - built when there's an
-actual screen that needs one, not speculatively ahead of that.
+Components neither consumer strictly needed yet, deferred rather than
+built speculatively: `Select` (Ebba's tag-merge dropdown, Trends/
+Summaries filters - currently native `<select>`s with no library
+styling), `Tabs` (Ebba's bottom nav bar), `Checkbox` (the "confirmed
+only" toggles - currently bare `<input type="checkbox">`), `Toast`.
+Build each when a real screen actually needs it.
 
 ## Open questions
 
