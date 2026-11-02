@@ -66,14 +66,16 @@ first real test of whether this package's theme-token bridge pattern
 (see v0.2) generalizes, or whether HodyPesTracker wants Ebba's green
 accent, its own `sky`/`slate` Tailwind palette, or something new.
 
-## v0.4 - stretch (not started)
+## v0.4 - Select, Tabs, Checkbox, Label, Table (done)
 
-Components neither consumer strictly needed yet, deferred rather than
-built speculatively: `Select` (Ebba's tag-merge dropdown, Trends/
-Summaries filters - currently native `<select>`s with no library
-styling), `Tabs` (Ebba's bottom nav bar), `Checkbox` (the "confirmed
-only" toggles - currently bare `<input type="checkbox">`), `Toast`.
-Build each when a real screen actually needs it.
+Built for Mernel's BrokerAdmin keyed ACL editor (its first real need),
+as the standard shadcn recipes on their Radix primitives
+(`@radix-ui/react-select`, `-tabs`, `-checkbox`, `-label`; `Table` is plain
+elements). `Select` brought in shadcn's `popover`/`accent` theme tokens.
+Purely additive - no existing component changed shape, so Ebba and
+HodyPesTracker need no changes; they can now replace their native
+`<select>`s, bottom-nav tabs and bare checkboxes when convenient.
+Still deferred: `Toast`.
 
 ## Open questions
 
