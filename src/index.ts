@@ -11,3 +11,4 @@ export * from "./components/Dialog.js";
 export * from "./components/Label.js";
 export * from "./components/Checkbox.js";
 export * from "./components/Table.js";
+export * from "./components/Tabs.js";
