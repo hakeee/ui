@@ -24,7 +24,15 @@ import {
 import { useState, type FormEvent } from "react";
 import { AccessLayout, Checklist, errorText, iamUi } from "./shared.js";
 
-type User = { id: number; email: string; displayName: string; root: boolean; roles: { name: string; source: "manual" | "oidc" }[] };
+type User = {
+  id: number;
+  email: string;
+  displayName: string;
+  root: boolean;
+  disabled: boolean;
+  roles: { name: string; source: "manual" | "oidc" }[];
+};
+type Settings = { canCreateUsers: boolean; canDisableUsers: boolean; canResetPasswords: boolean; canRevokeSessions: boolean };
 
 export function UsersPage() {
   const iam = iamUi.useModule(iamContract);
@@ -33,7 +41,12 @@ export function UsersPage() {
   const settings = iam.queries.settings.useQuery({});
   const unlocked = useVaultUnlocked();
   const canCreate = useCan("iam:createUser") && settings.data?.canCreateUsers === true;
-  const canEdit = useCan("iam:setUserRoles");
+  const canManage = [
+    useCan("iam:setUserRoles"),
+    useCan("iam:disableUser"),
+    useCan("iam:resetPassword"),
+    useCan("iam:revokeSessions"),
+  ].some(Boolean);
   const [editing, setEditing] = useState<User | null>(null);
   const [creating, setCreating] = useState(false);
   const roleOptions = (roles.data ?? []).map((r) => ({ name: r.name, hint: r.description || r.policies.join(", ") }));
@@ -67,6 +80,7 @@ export function UsersPage() {
               <TableCell>
                 <div className="flex flex-wrap gap-1">
                   {u.root && <Badge>root</Badge>}
+                  {u.disabled && <Badge variant="destructive">disabled</Badge>}
                   {u.roles.map((r) => (
                     <Badge key={`${r.name}-${r.source}`} variant={r.source === "oidc" ? "outline" : "secondary"} title={r.source === "oidc" ? "From the identity provider" : undefined}>
                       {r.name}
@@ -77,9 +91,9 @@ export function UsersPage() {
                 </div>
               </TableCell>
               <TableCell className="text-right">
-                {canEdit && !u.root && (
+                {canManage && !u.root && (
                   <Button type="button" variant="secondary" size="sm" disabled={!unlocked} onClick={() => setEditing(u)}>
-                    Edit roles
+                    Manage
                   </Button>
                 )}
               </TableCell>
@@ -87,45 +101,140 @@ export function UsersPage() {
           ))}
         </TableBody>
       </Table>
-      {editing && <EditRolesDialog user={editing} roleOptions={roleOptions} onClose={() => setEditing(null)} />}
+      {editing && (
+        <ManageUserDialog
+          user={(users.data ?? []).find((u) => u.id === editing.id) ?? editing}
+          roleOptions={roleOptions}
+          settings={settings.data}
+          onClose={() => setEditing(null)}
+        />
+      )}
       {creating && <CreateUserDialog roleOptions={roleOptions} onClose={() => setCreating(false)} />}
     </AccessLayout>
   );
 }
 
-function EditRolesDialog({ user, roleOptions, onClose }: { user: User; roleOptions: { name: string; hint?: string }[]; onClose: () => void }) {
+/** Everything an admin can do to someone else's account. Each part shows only if they're allowed it. */
+function ManageUserDialog({
+  user,
+  roleOptions,
+  settings,
+  onClose,
+}: {
+  user: User;
+  roleOptions: { name: string; hint?: string }[];
+  settings: Settings | undefined;
+  onClose: () => void;
+}) {
   const iam = iamUi.useModule(iamContract);
   const refreshAccess = useRefreshAccess();
+  const refresh = () => Promise.all([iam.queries.users.invalidate(), refreshAccess()]);
   const [roles, setRoles] = useState(user.roles.filter((r) => r.source === "manual").map((r) => r.name));
-  const save = iam.commands.setUserRoles.useMutation({
-    onSuccess: async () => {
-      await Promise.all([iam.queries.users.invalidate(), refreshAccess()]);
-      onClose();
-    },
-  });
+  const [newPassword, setNewPassword] = useState<string | null>(null);
+  const saveRoles = iam.commands.setUserRoles.useMutation({ onSuccess: refresh });
+  const disable = iam.commands.disableUser.useMutation({ onSuccess: refresh });
+  const enable = iam.commands.enableUser.useMutation({ onSuccess: refresh });
+  const revoke = iam.commands.revokeSessions.useMutation();
+  const reset = iam.commands.resetPassword.useMutation();
+  // Every hook called every render (no short-circuiting), then combined.
+  const canRoles = useCan("iam:setUserRoles");
+  const mayDisable = useCan("iam:disableUser");
+  const mayEnable = useCan("iam:enableUser");
+  const mayReset = useCan("iam:resetPassword");
+  const mayRevoke = useCan("iam:revokeSessions");
+  const canDisable = mayDisable && mayEnable && settings?.canDisableUsers === true;
+  const canReset = mayReset && settings?.canResetPasswords === true;
+  const canRevoke = mayRevoke && settings?.canRevokeSessions === true;
   const fromIdp = user.roles.filter((r) => r.source === "oidc").map((r) => r.name);
+  const error = [saveRoles, disable, enable, revoke, reset].map((m) => errorText(m.error)).find(Boolean);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Roles for {user.displayName}</DialogTitle>
+          <DialogTitle>{user.displayName}</DialogTitle>
           <DialogDescription>
-            {fromIdp.length > 0 ? `From the identity provider (changed there): ${fromIdp.join(", ")}.` : "Roles grant the policies attached to them."}
+            {[user.displayName !== user.email ? user.email : null, user.disabled ? "disabled" : null].filter(Boolean).join(" · ") || "Active account"}
           </DialogDescription>
         </DialogHeader>
-        <Checklist options={roleOptions} value={roles} onChange={setRoles} />
-        {save.isError && (
+
+        {canRoles && (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium">Roles</h3>
+            {fromIdp.length > 0 && <p className="text-xs text-muted-foreground">From the identity provider (changed there): {fromIdp.join(", ")}.</p>}
+            <Checklist options={roleOptions} value={roles} onChange={setRoles} />
+            <div>
+              <Button type="button" size="sm" disabled={saveRoles.isPending} onClick={() => saveRoles.mutate({ userId: user.id, roles })}>
+                {saveRoles.isSuccess ? "Saved" : "Save roles"}
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {(canReset || canRevoke || canDisable) && (
+          <section className="flex flex-col gap-2 border-t border-border pt-3">
+            <h3 className="text-sm font-medium">Account</h3>
+            {canReset &&
+              (newPassword && reset.isSuccess ? (
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs text-muted-foreground">New temporary login password - give it to them. Their vault passphrase is unchanged.</p>
+                  <code className="select-all rounded-md border border-border bg-muted p-2 text-center font-mono text-sm">{newPassword}</code>
+                </div>
+              ) : (
+                <div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={reset.isPending}
+                    onClick={() => {
+                      const password = temporaryPassword();
+                      setNewPassword(password);
+                      reset.mutate({ userId: user.id, password });
+                    }}
+                  >
+                    Reset login password
+                  </Button>
+                </div>
+              ))}
+            {canRevoke && (
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" disabled={revoke.isPending} onClick={() => revoke.mutate({ userId: user.id })}>
+                  Log out everywhere
+                </Button>
+                {revoke.isSuccess && <span className="text-xs text-muted-foreground">Logged out.</span>}
+              </div>
+            )}
+            {canDisable && (
+              <div>
+                {user.disabled ? (
+                  <Button type="button" variant="secondary" size="sm" disabled={enable.isPending} onClick={() => enable.mutate({ userId: user.id })}>
+                    Enable account
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={disable.isPending}
+                    onClick={() => confirm(`Disable ${user.displayName}? They're logged out everywhere and can't log in until enabled.`) && disable.mutate({ userId: user.id })}
+                  >
+                    Disable account
+                  </Button>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {error && (
           <Alert variant="destructive">
-            <AlertDescription>{errorText(save.error)}</AlertDescription>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
         <DialogFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={save.isPending} onClick={() => save.mutate({ userId: user.id, roles })}>
-            Save
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

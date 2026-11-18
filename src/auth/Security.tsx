@@ -28,7 +28,8 @@ import {
   Input,
   Label,
 } from "../index.js";
-import { WhenUnlocked } from "@hakeee/module-host/web";
+import { WhenUnlocked, useAccessState } from "@hakeee/module-host/web";
+import type { ReactNode } from "react";
 import { useState, type FormEvent } from "react";
 import { clearRecovered, wasRecovered } from "./recovered.js";
 import { AddPasskey } from "./AddPasskey.js";
@@ -100,6 +101,7 @@ export function PassphraseCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <PolicyGate action="vault:changePassphrase">
         <form onSubmit={submit} className="flex flex-col gap-3">
           {recovered && !change.isSuccess && (
             <Alert variant="destructive">
@@ -134,6 +136,7 @@ export function PassphraseCard() {
             </Button>
           </div>
         </form>
+        </PolicyGate>
       </CardContent>
     </Card>
   );
@@ -166,7 +169,9 @@ export function PasskeysCard({ passkeys, loading }: { passkeys: VaultMethod[]; l
             </Button>
           </div>
         ))}
-        <AddPasskey />
+        <PolicyGate action="vault:registerPasskey">
+          <AddPasskey />
+        </PolicyGate>
       </CardContent>
 
       <Dialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
@@ -208,6 +213,8 @@ export function RecoveryKeyCard({ existing, loading }: { existing: VaultMethod |
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const register = useRegisterRecoveryKey();
+  // Don't urge creating one when the organization's policy forbids it.
+  const recoveryAllowed = useAccessState("vault:setRecoveryKey") === "allowed";
 
   function start() {
     register.reset();
@@ -239,7 +246,7 @@ export function RecoveryKeyCard({ existing, loading }: { existing: VaultMethod |
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {!loading && !existing && (
+        {!loading && !existing && recoveryAllowed && (
           <Alert variant="destructive">
             <AlertDescription>
               You don't have one. If you forget your passphrase, your data can't be recovered.
@@ -247,11 +254,13 @@ export function RecoveryKeyCard({ existing, loading }: { existing: VaultMethod |
           </Alert>
         )}
         {existing && <p className="text-sm text-muted-foreground">Created {formatDate(existing.createdAt)}.</p>}
-        <div>
-          <Button type="button" variant={existing ? "secondary" : "default"} disabled={loading} onClick={start}>
-            {existing ? "Replace recovery key" : "Create recovery key"}
-          </Button>
-        </div>
+        <PolicyGate action="vault:setRecoveryKey">
+          <div>
+            <Button type="button" variant={existing ? "secondary" : "default"} disabled={loading} onClick={start}>
+              {existing ? "Replace recovery key" : "Create recovery key"}
+            </Button>
+          </div>
+        </PolicyGate>
       </CardContent>
 
       <Dialog open={key !== null} onOpenChange={(open) => !open && close()}>
@@ -318,6 +327,7 @@ export function LoginPasswordCard() {
         <CardDescription>What you log in with. Change it if someone gave you a temporary one. Your vault passphrase stays the same.</CardDescription>
       </CardHeader>
       <CardContent>
+        <PolicyGate action="auth:changePassword">
         <form onSubmit={submit} className="flex flex-col gap-3">
           <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="Current password" autoComplete="current-password" />
           <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="New password (at least 8 characters)" autoComplete="new-password" />
@@ -335,9 +345,22 @@ export function LoginPasswordCard() {
             </Button>
           </div>
         </form>
+        </PolicyGate>
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Self-service features an organization's policy can turn off (module-host
+ * IAM deny rules). Without IAM everything is allowed. Nothing renders while
+ * permissions load, so a feature doesn't flash its "not allowed" note.
+ */
+function PolicyGate({ action, children }: { action: string; children: ReactNode }) {
+  const state = useAccessState(action);
+  if (state === "loading") return null;
+  if (state === "denied") return <p className="text-sm text-muted-foreground">Your organization's policy doesn't allow this.</p>;
+  return <>{children}</>;
 }
 
 function formatDate(iso: string): string {
