@@ -2,19 +2,19 @@ import { ApiError, useLogin, useOidcLoginUrl, type AuthMode } from "@hakeee/vaul
 import { Alert, AlertDescription, Button, Input } from "../index.js";
 import { useState, type FormEvent } from "react";
 
-/** Email + password, or the OIDC button, depending on the server's auth mode. */
-export function LoginScreen({ mode }: { mode: AuthMode }) {
-  return mode === "oidc" ? <OidcLogin /> : <PasswordLogin />;
+/** Email + password, or the OIDC button, depending on the server's auth mode. `oidcProvider` names the IdP on the button. */
+export function LoginScreen({ mode, oidcProvider = "Zitadel" }: { mode: AuthMode; oidcProvider?: string }) {
+  return mode === "oidc" ? <OidcLogin provider={oidcProvider} /> : <PasswordLogin />;
 }
 
-function OidcLogin() {
+function OidcLogin({ provider }: { provider: string }) {
   const url = useOidcLoginUrl();
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center p-6">
       <div className="flex w-full max-w-sm flex-col gap-3">
         <h1 className="text-2xl font-semibold">Log in</h1>
         <Button type="button" onClick={() => window.location.assign(url)}>
-          Log in with Zitadel
+          Log in with {provider}
         </Button>
       </div>
     </main>

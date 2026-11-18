@@ -25,6 +25,8 @@ export interface PlatformAppProps {
   iam?: boolean;
   /** Where to go after a recovery-key unlock to pick a new passphrase - the page rendering `<SecurityPage>`. */
   securityPage?: PageRef;
+  /** OIDC mode: the IdP's name on the login button. Default "Zitadel". */
+  oidcProvider?: string;
 }
 
 /**
@@ -35,7 +37,7 @@ export interface PlatformAppProps {
  * `<QueryClientProvider>` and vault-service-react's `<VaultServiceProvider>`
  * above it.
  */
-export function PlatformApp({ host, title = "App", iam = false, securityPage }: PlatformAppProps) {
+export function PlatformApp({ host, title = "App", iam = false, securityPage, oidcProvider }: PlatformAppProps) {
   const gate = useVaultGate();
   switch (gate.status) {
     case "pending":
@@ -43,7 +45,7 @@ export function PlatformApp({ host, title = "App", iam = false, securityPage }: 
     case "offline":
       return <main className="p-6">Can't reach the server.</main>;
     case "login-required":
-      return <LoginScreen mode={gate.mode} />;
+      return <LoginScreen mode={gate.mode} oidcProvider={oidcProvider} />;
     case "vault-locked":
     case "unlocked": {
       const vault: VaultInfo =
