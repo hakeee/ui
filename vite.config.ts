@@ -23,13 +23,25 @@ export default defineConfig({
   ],
   build: {
     lib: {
-      entry: resolve(root, "src/index.ts"),
+      // `auth` and `access` are ready-made platform screens; they're separate
+      // entries so apps using only the components never load the platform.
+      entry: {
+        index: resolve(root, "src/index.ts"),
+        auth: resolve(root, "src/auth/index.ts"),
+        access: resolve(root, "src/access/index.ts"),
+      },
       formats: ["es"],
-      fileName: () => "index.js",
+      fileName: (_format, name) => `${name}.js`,
       cssFileName: "style",
     },
     rollupOptions: {
-      external: ["react", "react-dom", "react/jsx-runtime"],
+      // The app provides these, one copy each: React contexts (react-query,
+      // module-host's host, vault-service's client) only work if the screens
+      // and the app share the same module instance.
+      external: (id) =>
+        ["react", "react-dom", "react/jsx-runtime", "@tanstack/react-query"].includes(id) ||
+        id.startsWith("@hakeee/module-host") ||
+        id.startsWith("@hakeee/vault-service-react"),
     },
     // index.ts's own `import "./styles.css"` is what Tailwind's plugin
     // scans (and everything it transitively pulls in, i.e. every

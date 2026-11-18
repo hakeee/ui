@@ -12,6 +12,14 @@
       "types": "./dist/src/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./auth": {
+      "types": "./dist/src/auth/index.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./access": {
+      "types": "./dist/src/access/index.d.ts",
+      "import": "./dist/access.js"
+    },
     "./style.css": "./dist/style.css"
   },
   "main": "./dist/index.js",
@@ -39,10 +47,16 @@
   },
   "peerDependencies": {
     "react": ">=18",
-    "react-dom": ">=18"
+    "react-dom": ">=18",
+    "@hakeee/module-host": "*",
+    "@hakeee/vault-service-react": "*",
+    "@tanstack/react-query": "^5.0.0"
   },
   "devDependencies": {
+    "@hakeee/module-host": "link:../module-host",
+    "@hakeee/vault-service-react": "link:../vault-service/packages/react",
     "@tailwindcss/vite": "^4.0.0",
+    "@tanstack/react-query": "^5.108.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.0",
@@ -58,5 +72,16 @@
     "vite": "^6.0.3",
     "vite-plugin-dts": "^4.3.0",
     "vitest": "^5.0.4"
+  },
+  "peerDependenciesMeta": {
+    "@hakeee/module-host": {
+      "optional": true
+    },
+    "@hakeee/vault-service-react": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    }
   }
 }

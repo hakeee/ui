@@ -31,6 +31,39 @@ separate stylesheets.
 chosen because both consumer apps' *existing* screens already use
 something shaped exactly like these, not from shadcn's full catalog.
 
+## Ready-made platform screens
+
+Two optional entries for apps on the self-hosted platform (vault-service +
+module-host). They need `@hakeee/vault-service-react`, `@hakeee/module-host`
+and `@tanstack/react-query`, which are optional peers: the core entry never
+loads them.
+
+- **`@hakeee/ui/auth`**:
+  - `PlatformApp` is a whole app frame: the login gate, the shell (module
+    nav, Lock/Unlock, Log out), the unlock dialog, the live socket, and
+    module-host IAM if you pass `iam`.
+  - The pieces: `LoginScreen`, `UnlockProvider` / `useUnlock` /
+    `LockedNotice`, `SecurityPage` (passkeys, recovery key, vault
+    passphrase, login password) and its cards.
+- **`@hakeee/ui/access`**: `accessWeb`, the admin pages for module-host's
+  built-in IAM (Users, Roles, Policies). Install it in
+  `createWebHost({ modules })`.
+
+```tsx
+import { PlatformApp } from "@hakeee/ui/auth";
+import { accessWeb } from "@hakeee/ui/access";
+
+const host = createWebHost({ modules: [homeWeb, accessWeb], baseUrl });
+<QueryClientProvider client={queryClient}>
+  <VaultServiceProvider baseUrl={api}>
+    <PlatformApp host={host} title="My app" iam securityPage={homeContract.pages.security} />
+  </VaultServiceProvider>
+</QueryClientProvider>
+```
+
+The platform packages stay external in the build, so the screens share
+the app's single copy of each. Their React contexts only work that way.
+
 ## What's next
 
 See `ROADMAP.md` - HodyPesTracker integration, then Ebba's Tailwind
