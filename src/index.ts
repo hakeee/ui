@@ -13,3 +13,4 @@ export * from "./components/Checkbox.js";
 export * from "./components/Table.js";
 export * from "./components/Tabs.js";
 export * from "./components/Select.js";
+export * from "./theme.js";

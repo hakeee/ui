@@ -12,7 +12,7 @@ import type { PageRef } from "@hakeee/module-host";
 import { useLockVault, useLogout, useRefreshVaultState, useVaultGate, vaultServiceQueryKey } from "@hakeee/vault-service-react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { Button } from "../index.js";
+import { Button, PaletteSelect, ThemeToggle, type PaletteOption } from "../index.js";
 import { LoginScreen } from "./Login.js";
 import { UnlockProvider, useUnlock, type VaultInfo } from "./Unlock.js";
 
@@ -27,6 +27,10 @@ export interface PlatformAppProps {
   securityPage?: PageRef;
   /** OIDC mode: the IdP's name on the login button. Default "Zitadel". */
   oidcProvider?: string;
+  /** Show a light / dark / system toggle in the header. Off by default: an app needs dark values for every colour it styles itself first. */
+  themeToggle?: boolean;
+  /** Colour palettes the app defines in its CSS (`:root[data-palette="<id>"]`); shows a picker in the header. */
+  palettes?: PaletteOption[];
 }
 
 /**
@@ -37,7 +41,7 @@ export interface PlatformAppProps {
  * `<QueryClientProvider>` and vault-service-react's `<VaultServiceProvider>`
  * above it.
  */
-export function PlatformApp({ host, title = "App", iam = false, securityPage, oidcProvider }: PlatformAppProps) {
+export function PlatformApp({ host, title = "App", iam = false, securityPage, oidcProvider, themeToggle = false, palettes }: PlatformAppProps) {
   const gate = useVaultGate();
   switch (gate.status) {
     case "pending":
@@ -54,7 +58,7 @@ export function PlatformApp({ host, title = "App", iam = false, securityPage, oi
           : { unlocked: false, hasVault: gate.hasVault, hasPasskey: gate.hasPasskey, hasRecoveryKey: gate.hasRecoveryKey };
       const shell = (
         <Unlocking vault={vault} securityPage={securityPage}>
-          <Shell title={title} unlocked={vault.unlocked} />
+          <Shell title={title} unlocked={vault.unlocked} themeToggle={themeToggle} palettes={palettes} />
         </Unlocking>
       );
       return (
@@ -76,7 +80,17 @@ function Unlocking({ vault, securityPage, children }: { vault: VaultInfo; securi
   );
 }
 
-function Shell({ title, unlocked }: { title: ReactNode; unlocked: boolean }) {
+function Shell({
+  title,
+  unlocked,
+  themeToggle,
+  palettes,
+}: {
+  title: ReactNode;
+  unlocked: boolean;
+  themeToggle: boolean;
+  palettes?: PaletteOption[];
+}) {
   const logout = useLogout();
   const lock = useLockVault();
   const unlock = useUnlock();
@@ -114,6 +128,8 @@ function Shell({ title, unlocked }: { title: ReactNode; unlocked: boolean }) {
           ))}
         </nav>
         <div className="flex items-center gap-2">
+          {palettes && palettes.length > 0 && <PaletteSelect palettes={palettes} />}
+          {themeToggle && <ThemeToggle />}
           {unlocked ? (
             <Button type="button" variant="secondary" size="sm" onClick={() => lock.mutate()}>
               Lock

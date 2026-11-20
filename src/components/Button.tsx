@@ -26,6 +26,8 @@ export const buttonVariants = cva(
         // which combined with `text-primary` renders as an unreadable
         // solid-color button.
         link: "bg-transparent text-primary underline-offset-4 hover:underline",
+        // bg-transparent explicit for the same reason as `link`.
+        ghost: "bg-transparent hover:bg-accent hover:text-accent-foreground",
       },
       size: {
         default: "h-10 px-4 py-2",

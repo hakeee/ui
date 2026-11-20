@@ -9,6 +9,12 @@ export const alertVariants = cva(
       variant: {
         default: "bg-background text-foreground",
         destructive: "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        // Warning text mixes toward the foreground: a yellow light enough to
+        // read as "warning" is too light to read as text on a light background.
+        success: "border-success/40 bg-success/10 text-success [&>svg]:text-success",
+        warning:
+          "border-warning/50 bg-warning/15 text-[color-mix(in_oklch,var(--warning)_55%,var(--foreground))] [&>svg]:text-warning",
+        info: "border-info/40 bg-info/10 text-info [&>svg]:text-info",
       },
     },
     defaultVariants: { variant: "default" },
