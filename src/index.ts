@@ -24,5 +24,6 @@ export * from "./components/StatTile.js";
 export * from "./components/EmptyState.js";
 export * from "./components/MonthGrid.js";
 export * from "./components/DateRangePicker.js";
+export * from "./components/WeekGrid.js";
 export * from "./lib/format.js";
 export * from "./theme.js";

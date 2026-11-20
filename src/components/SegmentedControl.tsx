@@ -13,9 +13,10 @@ export function SegmentedControl<T extends string>({
   className,
   "aria-label": ariaLabel,
 }: {
-  options: readonly SegmentedOption<T>[];
+  // The type comes from `value` alone, so inline option literals don't widen it to string.
+  options: readonly SegmentedOption<NoInfer<T>>[];
   value: T;
-  onValueChange(value: T): void;
+  onValueChange(value: NoInfer<T>): void;
   className?: string;
   "aria-label"?: string;
 }) {
