@@ -148,8 +148,9 @@ function Shell({
     <div className={cn("min-h-dvh", mobile && "pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0")}>
       {/* Also reports locks from elsewhere (another tab, the idle timeout) right away. */}
       <LiveConnection onVaultChange={(nowUnlocked) => nowUnlocked !== unlocked && refresh()} />
-      <header className={cn("flex items-center justify-between border-b border-border px-6 py-3", mobile && "hidden md:flex")}>
-        <nav className="flex items-center gap-4">
+      {/* Wraps instead of overflowing when an app has more nav entries than fit on one line. */}
+      <header className={cn("flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border px-6 py-3", mobile && "hidden md:flex")}>
+        <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="font-semibold">{title}</span>
           {nav.map((item) => (
             <a
@@ -162,7 +163,7 @@ function Shell({
             </a>
           ))}
         </nav>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {palettes && palettes.length > 0 && <PaletteSelect palettes={palettes} />}
           {themeToggle && <ThemeToggle />}
           {unlocked ? (
