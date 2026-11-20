@@ -113,7 +113,7 @@ export function PassphraseCard() {
             autoFocus={recovered}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="New passphrase"
+            placeholder="New passphrase (at least 8 characters)"
             autoComplete="new-password"
           />
           <Input
@@ -126,12 +126,14 @@ export function PassphraseCard() {
           {mismatch && <p className="text-sm text-destructive">The passphrases don't match.</p>}
           {change.isError && (
             <Alert variant="destructive">
-              <AlertDescription>Couldn't change it - try again.</AlertDescription>
+              <AlertDescription>
+                {change.error instanceof ApiError && change.error.status === 400 ? "Choose a passphrase of at least 8 characters." : "Couldn't change it - try again."}
+              </AlertDescription>
             </Alert>
           )}
           {change.isSuccess && <p className="text-sm text-muted-foreground">Passphrase changed. The old one no longer works.</p>}
           <div>
-            <Button type="submit" variant="secondary" disabled={change.isPending || !password || password !== confirm}>
+            <Button type="submit" variant="secondary" disabled={change.isPending || password.length < 8 || password !== confirm}>
               {change.isPending ? "Changing…" : "Change passphrase"}
             </Button>
           </div>

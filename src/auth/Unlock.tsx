@@ -108,7 +108,11 @@ function UnlockForm({ vault, onRecovered }: { vault: VaultInfo; onRecovered?: ()
   const error =
     unlock.error instanceof ApiError && unlock.error.status === 401
       ? "That's not the right passphrase."
-      : unlock.isError
+      : unlock.error instanceof ApiError && unlock.error.status === 429
+        ? "Too many failed attempts. Wait a few minutes and try again."
+        : unlock.error instanceof ApiError && unlock.error.status === 400
+          ? "Choose a passphrase of at least 8 characters."
+          : unlock.isError
         ? "Couldn't reach the server - try again."
         : passkeyError(passkey.error);
 
@@ -132,7 +136,7 @@ function UnlockForm({ vault, onRecovered }: { vault: VaultInfo; onRecovered?: ()
         autoFocus={!vault.hasPasskey}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        placeholder="Passphrase"
+        placeholder={vault.hasVault ? "Passphrase" : "Passphrase (at least 8 characters)"}
         autoComplete={vault.hasVault ? "current-password" : "new-password"}
       />
       {error && (
@@ -171,7 +175,9 @@ function RecoveryUnlock({ onBack, onRecovered }: { onBack: () => void; onRecover
   const error =
     unlock.error instanceof ApiError && unlock.error.status === 401
       ? "That recovery key doesn't match."
-      : unlock.isError
+      : unlock.error instanceof ApiError && unlock.error.status === 429
+        ? "Too many failed attempts. Wait a few minutes and try again."
+        : unlock.isError
         ? "Couldn't reach the server - try again."
         : null;
 

@@ -34,7 +34,11 @@ function PasswordLogin() {
   const error =
     login.error instanceof ApiError && login.error.status === 401
       ? "Wrong email or password."
-      : login.isError
+      : login.error instanceof ApiError && login.error.status === 429
+        ? "Too many failed attempts. Wait a few minutes and try again."
+        : login.error instanceof ApiError && login.error.status === 400
+          ? `${login.error.message[0]?.toUpperCase() ?? ""}${login.error.message.slice(1)}.`
+          : login.isError
         ? "Couldn't reach the server - try again."
         : null;
 
