@@ -15,6 +15,13 @@ export interface WeekGridEvent {
   tone?: "primary" | "muted" | "cancelled";
   /** Draws attention (e.g. a clash). */
   warning?: boolean;
+  /**
+   * A colour of its own (e.g. per person), as a CSS colour such as `var(--trainer-teal)`; overrides the
+   * primary/muted tone. Pass theme tokens with light and dark values so it follows the theme. Text uses
+   * `colorForeground` (default white).
+   */
+  color?: string;
+  colorForeground?: string;
 }
 
 const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
@@ -103,6 +110,7 @@ export function WeekGrid<E extends WeekGridEvent>({
               {dayEvents.map((event) => {
                 const place = lanes.get(event.id) ?? { lane: 0, lanes: 1 };
                 const tone = event.tone ?? "primary";
+                const colored = event.color !== undefined && tone !== "cancelled";
                 return (
                   <button
                     key={event.id}
@@ -110,8 +118,9 @@ export function WeekGrid<E extends WeekGridEvent>({
                     onClick={() => onSelect?.(event)}
                     className={cn(
                       "absolute overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      tone === "primary" && "border-primary/40 bg-primary text-primary-foreground hover:bg-primary/90",
-                      tone === "muted" && "border-border bg-secondary text-secondary-foreground hover:bg-accent",
+                      colored && "border-transparent hover:brightness-110",
+                      !colored && tone === "primary" && "border-primary/40 bg-primary text-primary-foreground hover:bg-primary/90",
+                      !colored && tone === "muted" && "border-border bg-secondary text-secondary-foreground hover:bg-accent",
                       tone === "cancelled" && "border-dashed border-border bg-transparent text-muted-foreground line-through",
                       event.warning && "ring-2 ring-warning",
                     )}
@@ -120,6 +129,7 @@ export function WeekGrid<E extends WeekGridEvent>({
                       height: Math.max(20, (event.durationMinutes / 60) * hourHeight - 2),
                       left: `calc(${(place.lane / place.lanes) * 100}% + 2px)`,
                       width: `calc(${100 / place.lanes}% - 4px)`,
+                      ...(colored ? { background: event.color, color: event.colorForeground ?? "white" } : {}),
                     }}
                   >
                     <span className="block truncate font-medium">{event.title}</span>
