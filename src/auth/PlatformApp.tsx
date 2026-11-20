@@ -11,8 +11,9 @@ import {
 import type { PageRef } from "@hakeee/module-host";
 import { useLockVault, useLogout, useRefreshVaultState, useVaultGate, vaultServiceQueryKey } from "@hakeee/vault-service-react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { Button, PaletteSelect, ThemeToggle, type PaletteOption } from "../index.js";
+import { Ellipsis, Lock, LockOpen, LogOut } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Button, ConfirmProvider, PaletteSelect, Sheet, SheetContent, SheetHeader, SheetTitle, ThemeToggle, cn, type PaletteOption } from "../index.js";
 import { LoginScreen } from "./Login.js";
 import { UnlockProvider, useUnlock, type VaultInfo } from "./Unlock.js";
 
@@ -31,6 +32,18 @@ export interface PlatformAppProps {
   themeToggle?: boolean;
   /** Colour palettes the app defines in its CSS (`:root[data-palette="<id>"]`); shows a picker in the header. */
   palettes?: PaletteOption[];
+  /**
+   * Phone layout: below `md`, the nav becomes a bottom tab bar (the first
+   * `tabs` nav entries, with their `icon`) and everything else - the rest of
+   * the nav, theme, Lock, Log out - moves into a "More" sheet. Default off.
+   */
+  mobileNav?: boolean | { tabs?: number };
+  /**
+   * Open the "choose a passphrase" dialog by itself until the user has a
+   * vault. Default on; turn it off when everyday use works without one
+   * (they set it when something first needs the vault, or via Unlock).
+   */
+  askForPassphrase?: boolean;
 }
 
 /**
@@ -41,7 +54,17 @@ export interface PlatformAppProps {
  * `<QueryClientProvider>` and vault-service-react's `<VaultServiceProvider>`
  * above it.
  */
-export function PlatformApp({ host, title = "App", iam = false, securityPage, oidcProvider, themeToggle = false, palettes }: PlatformAppProps) {
+export function PlatformApp({
+  host,
+  title = "App",
+  iam = false,
+  securityPage,
+  oidcProvider,
+  themeToggle = false,
+  palettes,
+  mobileNav = false,
+  askForPassphrase = true,
+}: PlatformAppProps) {
   const gate = useVaultGate();
   switch (gate.status) {
     case "pending":
@@ -57,8 +80,16 @@ export function PlatformApp({ host, title = "App", iam = false, securityPage, oi
           ? { unlocked: true, hasVault: true, hasPasskey: false, hasRecoveryKey: false }
           : { unlocked: false, hasVault: gate.hasVault, hasPasskey: gate.hasPasskey, hasRecoveryKey: gate.hasRecoveryKey };
       const shell = (
-        <Unlocking vault={vault} securityPage={securityPage}>
-          <Shell title={title} unlocked={vault.unlocked} themeToggle={themeToggle} palettes={palettes} />
+        <Unlocking vault={vault} securityPage={securityPage} askForPassphrase={askForPassphrase}>
+          <ConfirmProvider>
+            <Shell
+              title={title}
+              unlocked={vault.unlocked}
+              themeToggle={themeToggle}
+              palettes={palettes}
+              mobileTabs={mobileNav === false ? undefined : mobileNav === true ? 4 : (mobileNav.tabs ?? 4)}
+            />
+          </ConfirmProvider>
         </Unlocking>
       );
       return (
@@ -71,10 +102,10 @@ export function PlatformApp({ host, title = "App", iam = false, securityPage, oi
   }
 }
 
-function Unlocking({ vault, securityPage, children }: { vault: VaultInfo; securityPage?: PageRef; children: ReactNode }) {
+function Unlocking({ vault, securityPage, askForPassphrase, children }: { vault: VaultInfo; securityPage?: PageRef; askForPassphrase: boolean; children: ReactNode }) {
   const host = useWebHost();
   return (
-    <UnlockProvider vault={vault} onRecovered={securityPage ? () => host.history.push(host.href(securityPage)) : undefined}>
+    <UnlockProvider vault={vault} askForPassphrase={askForPassphrase} onRecovered={securityPage ? () => host.history.push(host.href(securityPage)) : undefined}>
       {children}
     </UnlockProvider>
   );
@@ -85,11 +116,14 @@ function Shell({
   unlocked,
   themeToggle,
   palettes,
+  mobileTabs,
 }: {
   title: ReactNode;
   unlocked: boolean;
   themeToggle: boolean;
   palettes?: PaletteOption[];
+  /** Set: phone layout with this many bottom tabs. */
+  mobileTabs?: number;
 }) {
   const logout = useLogout();
   const lock = useLockVault();
@@ -109,11 +143,12 @@ function Shell({
       },
     });
 
+  const mobile = mobileTabs !== undefined;
   return (
-    <div className="min-h-dvh">
+    <div className={cn("min-h-dvh", mobile && "pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0")}>
       {/* Also reports locks from elsewhere (another tab, the idle timeout) right away. */}
       <LiveConnection onVaultChange={(nowUnlocked) => nowUnlocked !== unlocked && refresh()} />
-      <header className="flex items-center justify-between border-b border-border px-6 py-3">
+      <header className={cn("flex items-center justify-between border-b border-border px-6 py-3", mobile && "hidden md:flex")}>
         <nav className="flex items-center gap-4">
           <span className="font-semibold">{title}</span>
           {nav.map((item) => (
@@ -144,10 +179,145 @@ function Shell({
           </Button>
         </div>
       </header>
+      {mobile && (
+        <MobileNav
+          title={title}
+          tabs={mobileTabs}
+          unlocked={unlocked}
+          themeToggle={themeToggle}
+          palettes={palettes}
+          onLock={() => lock.mutate()}
+          onUnlock={unlock.open}
+          onLogOut={logOut}
+        />
+      )}
       <RouterOutlet
         notFound={<main className="p-6">Nothing here.</main>}
         forbidden={<main className="p-6">You don't have access to this page.</main>}
       />
     </div>
+  );
+}
+
+/**
+ * Phone chrome: a slim title bar on top, tabs at the bottom (thumb reach),
+ * and a "More" sheet for the nav entries that don't fit plus the account
+ * actions.
+ */
+function MobileNav({
+  title,
+  tabs,
+  unlocked,
+  themeToggle,
+  palettes,
+  onLock,
+  onUnlock,
+  onLogOut,
+}: {
+  title: ReactNode;
+  tabs: number;
+  unlocked: boolean;
+  themeToggle: boolean;
+  palettes?: PaletteOption[];
+  onLock(): void;
+  onUnlock(): void;
+  onLogOut(): void;
+}) {
+  const nav = useNav();
+  const go = useNavigateHref();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const shown = nav.slice(0, tabs);
+  const rest = nav.slice(tabs);
+  const moreActive = rest.some((item) => item.active);
+  const tabClass = (active: boolean) =>
+    cn(
+      "flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 bg-transparent px-1 py-2 text-[11px] font-medium transition-colors",
+      active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+    );
+
+  return (
+    <>
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur md:hidden">
+        <span className="font-semibold">{title}</span>
+        {!unlocked && (
+          <Button type="button" size="sm" onClick={onUnlock}>
+            <LockOpen className="h-4 w-4" /> Unlock
+          </Button>
+        )}
+      </header>
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
+        {shown.map((item) => {
+          const Icon = item.icon;
+          return (
+            <a key={item.href} href={item.href} onClick={go(item.href)} aria-current={item.active ? "page" : undefined} className={tabClass(item.active)}>
+              {Icon ? <Icon className="h-5 w-5" /> : <span className="h-5" />}
+              <span className="max-w-full truncate">{item.label}</span>
+            </a>
+          );
+        })}
+        <button type="button" onClick={() => setMoreOpen(true)} className={tabClass(moreActive)} aria-haspopup="dialog">
+          <Ellipsis className="h-5 w-5" />
+          <span>More</span>
+        </button>
+      </nav>
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>More</SheetTitle>
+          </SheetHeader>
+          {rest.length > 0 && (
+            <div className="flex flex-col">
+              {rest.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    onClick={(event) => {
+                      go(item.href)(event);
+                      setMoreOpen(false);
+                    }}
+                    aria-current={item.active ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium hover:bg-accent",
+                      item.active ? "text-primary" : "text-foreground",
+                    )}
+                  >
+                    {Icon && <Icon className="h-5 w-5 text-muted-foreground" />}
+                    {item.label}
+                  </a>
+                );
+              })}
+            </div>
+          )}
+          {(themeToggle || (palettes && palettes.length > 0)) && (
+            <div className="flex items-center justify-between gap-2 border-t border-border pt-4">
+              <span className="text-sm text-muted-foreground">Appearance</span>
+              <div className="flex items-center gap-2">
+                {palettes && palettes.length > 0 && <PaletteSelect palettes={palettes} />}
+                {themeToggle && <ThemeToggle />}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2 border-t border-border pt-4">
+            {unlocked ? (
+              <Button type="button" variant="secondary" onClick={() => (onLock(), setMoreOpen(false))}>
+                <Lock className="h-4 w-4" /> Lock
+              </Button>
+            ) : (
+              <Button type="button" onClick={() => (onUnlock(), setMoreOpen(false))}>
+                <LockOpen className="h-4 w-4" /> Unlock
+              </Button>
+            )}
+            <Button type="button" variant="secondary" onClick={onLogOut}>
+              <LogOut className="h-4 w-4" /> Log out
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

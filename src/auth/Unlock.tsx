@@ -43,12 +43,23 @@ export function useUnlock(): { open(): void } {
 /**
  * Owns the unlock dialog for the logged-in shell. Pages stay usable while
  * locked; the header's Unlock button and `<LockedNotice>` open this. The
- * very first time (no vault yet) it opens by itself to set a passphrase.
- * `onRecovered` runs after a recovery-key unlock - send the user to pick a
- * new passphrase (`<SecurityPage>` then asks for one).
+ * very first time (no vault yet) it opens by itself to set a passphrase,
+ * unless `askForPassphrase` is false (apps whose everyday use needs no
+ * vault). `onRecovered` runs after a recovery-key unlock - send the user
+ * to pick a new passphrase (`<SecurityPage>` then asks for one).
  */
-export function UnlockProvider({ vault, onRecovered, children }: { vault: VaultInfo; onRecovered?: () => void; children: ReactNode }) {
-  const [open, setOpen] = useState(!vault.unlocked && !vault.hasVault);
+export function UnlockProvider({
+  vault,
+  onRecovered,
+  askForPassphrase = true,
+  children,
+}: {
+  vault: VaultInfo;
+  onRecovered?: () => void;
+  askForPassphrase?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(askForPassphrase && !vault.unlocked && !vault.hasVault);
   useEffect(() => {
     if (vault.unlocked) setOpen(false);
   }, [vault.unlocked]);

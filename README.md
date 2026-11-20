@@ -31,6 +31,23 @@ separate stylesheets.
 chosen because both consumer apps' *existing* screens already use
 something shaped exactly like these, not from shadcn's full catalog.
 
+Since then, also `Label`, `Checkbox`, `Select`, `Tabs`, `Table`, `Textarea`,
+theming (`ThemeToggle`, `PaletteSelect`, `configureTheme`), and the
+phone-first pieces HodyPesTracker v2 needed:
+
+- `Sheet` (bottom drawer on phones, centred dialog from `sm` up),
+  `ConfirmProvider` / `useConfirm()` (themed `window.confirm`, promise-based)
+- Form bits: `Field` (label + hint/error wired to the control),
+  `NumberInput` (select-all on focus, numeric keyboard, decimal comma,
+  optional steppers and suffix), `SegmentedControl`, `ChoiceTile` (big
+  tappable option), `SavedBadge` + `useSavedFlash`
+- `MonthGrid` (Monday-first month calendar, you render each day's content),
+  `DateRangePicker` (from/to with presets), `StatTile`, `EmptyState`
+- Helpers: `formatMoney`, `formatHours`, and local-calendar ISO date maths
+  (`todayIso`, `addDays`, `startOfWeek`, `startOfMonth`, `endOfMonth`,
+  `addMonths`, `formatDate`): never `toISOString()`, which is yesterday
+  after midnight in Europe
+
 ## Ready-made platform screens
 
 Two optional entries for apps on the self-hosted platform (vault-service +
@@ -41,7 +58,10 @@ loads them.
 - **`@hakeee/ui/auth`**:
   - `PlatformApp` is a whole app frame: the login gate, the shell (module
     nav, Lock/Unlock, Log out), the unlock dialog, the live socket, and
-    module-host IAM if you pass `iam`.
+    module-host IAM if you pass `iam`. `mobileNav` turns the nav into a
+    bottom tab bar on phones (the first nav entries, with their `icon`, plus
+    a "More" sheet); `askForPassphrase={false}` stops the first-run
+    passphrase prompt for apps that work without the vault.
   - The pieces: `LoginScreen`, `UnlockProvider` / `useUnlock` /
     `LockedNotice`, `SecurityPage` (passkeys, recovery key, vault
     passphrase, login password) and its cards.
