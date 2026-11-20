@@ -1,4 +1,4 @@
-import { iamContract, policyDocumentSchema } from "@hakeee/module-host/iam";
+import { iamContract, policyDocumentSchema, type PolicyDocument, type PolicyStatement } from "@hakeee/module-host/iam";
 import { useRefreshAccess } from "@hakeee/module-host/iam/web";
 import { useCan, useVaultUnlocked } from "@hakeee/module-host/web";
 import {
@@ -18,18 +18,26 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  SegmentedControl,
   Textarea,
 } from "../index.js";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AccessLayout, errorText, iamUi } from "./shared.js";
+import { StatementEditor } from "./StatementEditor.js";
+import { describeStatement } from "./statements.js";
 
 type Policy = { name: string; description: string; managed: boolean; document: unknown };
 
-const EXAMPLE = JSON.stringify(
-  { version: 1, statements: [{ effect: "allow", actions: ["home:*"] }, { effect: "deny", actions: ["home:me"] }] },
-  null,
-  2,
-);
+const EMPTY: PolicyDocument = { version: 1, statements: [{ effect: "allow", actions: [] }] };
+
+const parse = (text: string) => {
+  try {
+    const result = policyDocumentSchema.safeParse(JSON.parse(text));
+    return result.success ? ({ ok: true, document: result.data as PolicyDocument } as const) : ({ ok: false, error: result.error.issues[0]?.message ?? "invalid policy" } as const);
+  } catch {
+    return { ok: false, error: "not valid JSON" } as const;
+  }
+};
 
 export function PoliciesPage() {
   const iam = iamUi.useModule(iamContract);
@@ -90,8 +98,16 @@ export function PoliciesPage() {
               </div>
             )}
           </CardHeader>
-          <CardContent>
-            <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(policy.document, null, 2)}</pre>
+          <CardContent className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-1 text-sm">
+              {(policy.document as PolicyDocument).statements.map((statement, i) => (
+                <li key={i}>{describeStatement(statement)}</li>
+              ))}
+            </ul>
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground">JSON</summary>
+              <pre className="mt-2 overflow-x-auto rounded-md bg-muted p-3">{JSON.stringify(policy.document, null, 2)}</pre>
+            </details>
           </CardContent>
         </Card>
       ))}
@@ -103,51 +119,80 @@ export function PoliciesPage() {
 function PolicyDialog({ policy, onClose }: { policy?: Policy; onClose: () => void }) {
   const iam = iamUi.useModule(iamContract);
   const actions = iam.queries.actions.useQuery({});
+  const resources = iam.queries.resources.useQuery({});
   const refreshAccess = useRefreshAccess();
   const [name, setName] = useState(policy?.name ?? "");
   const [description, setDescription] = useState(policy?.description ?? "");
-  const [text, setText] = useState(policy ? JSON.stringify(policy.document, null, 2) : EXAMPLE);
-  const parsed = useMemo(() => {
-    try {
-      const result = policyDocumentSchema.safeParse(JSON.parse(text));
-      return result.success
-        ? ({ ok: true, document: result.data } as const)
-        : ({ ok: false, error: result.error.issues[0]?.message ?? "invalid policy" } as const);
-    } catch {
-      return { ok: false, error: "not valid JSON" } as const;
-    }
-  }, [text]);
+  const [mode, setMode] = useState<"builder" | "json">("builder");
+  // The document is the source of truth; the JSON tab edits text and only replaces it when the text parses.
+  const [document, setDocument] = useState<PolicyDocument>((policy?.document as PolicyDocument | undefined) ?? EMPTY);
+  const [text, setText] = useState(JSON.stringify(document, null, 2));
+  const parsed = mode === "json" ? parse(text) : ({ ok: true, document } as const);
+  const statements = document.statements;
+  const setStatements = (next: PolicyStatement[]) => {
+    const doc = { version: 1 as const, statements: next };
+    setDocument(doc);
+    setText(JSON.stringify(doc, null, 2));
+  };
   const save = iam.commands.putPolicy.useMutation({
     onSuccess: async () => {
       await Promise.all([iam.queries.policies.invalidate(), refreshAccess()]);
       onClose();
     },
   });
+  const empty = parsed.ok && parsed.document.statements.some((s) => s.actions.length === 0);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{policy ? `Edit ${policy.name}` : "New policy"}</DialogTitle>
           <DialogDescription>
             Statements allow or deny actions (<code>module:operation</code>, <code>*</code> wildcards). A deny beats any allow; anything not
-            allowed is denied. <code>kind</code> limits a statement to queries or commands; <code>notActions</code> carves out exceptions.
+            allowed is denied. Actions that work on records (clients, sessions) can be limited to some of them.
           </DialogDescription>
         </DialogHeader>
         <Input placeholder="Name, e.g. NotesEditor" value={name} disabled={policy !== undefined} onChange={(e) => setName(e.target.value)} />
         <Input placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <Textarea className="min-h-48 font-mono text-xs" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
-        {!parsed.ok && <p className="text-sm text-destructive">{parsed.error}</p>}
-        <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground">Available actions ({actions.data?.length ?? 0})</summary>
-          <ul className="mt-2 max-h-40 overflow-y-auto font-mono text-xs">
-            {(actions.data ?? []).map((a) => (
-              <li key={a.action}>
-                {a.action} <span className="text-muted-foreground">({a.kind})</span>
-              </li>
+        <SegmentedControl
+          aria-label="Editor"
+          value={mode}
+          onValueChange={(next) => {
+            if (next === "builder") {
+              const result = parse(text);
+              if (!result.ok) return;
+              setDocument(result.document);
+            } else setText(JSON.stringify(document, null, 2));
+            setMode(next);
+          }}
+          options={[
+            { value: "builder", label: "Builder" },
+            { value: "json", label: "Advanced (JSON)" },
+          ]}
+        />
+        {mode === "builder" ? (
+          <div className="flex flex-col gap-3">
+            {statements.map((statement, i) => (
+              <StatementEditor
+                key={i}
+                statement={statement}
+                actions={actions.data ?? []}
+                resources={resources.data ?? []}
+                onChange={(next) => setStatements(statements.map((s, j) => (j === i ? next : s)))}
+                onRemove={() => setStatements(statements.filter((_, j) => j !== i))}
+              />
             ))}
-          </ul>
-        </details>
+            <Button type="button" variant="secondary" onClick={() => setStatements([...statements, { effect: "allow", actions: [] }])}>
+              Add statement
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Textarea className="min-h-48 font-mono text-xs" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+            {!parsed.ok && <p className="text-sm text-destructive">{parsed.error}</p>}
+          </>
+        )}
+        {empty && <p className="text-sm text-muted-foreground">Every statement needs at least one action.</p>}
         {save.isError && (
           <Alert variant="destructive">
             <AlertDescription>{errorText(save.error)}</AlertDescription>
@@ -159,7 +204,7 @@ function PolicyDialog({ policy, onClose }: { policy?: Policy; onClose: () => voi
           </Button>
           <Button
             type="button"
-            disabled={save.isPending || !name || !parsed.ok}
+            disabled={save.isPending || !name || !parsed.ok || empty}
             onClick={() => parsed.ok && save.mutate({ name, description, document: parsed.document })}
           >
             Save
