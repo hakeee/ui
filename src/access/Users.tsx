@@ -45,6 +45,7 @@ type Settings = {
   canInvite: boolean;
   emailsInvites: boolean;
   canResetMfa: boolean;
+  rolesAtIdp: boolean;
 };
 type SentInvite = { link: string | null; expiresAt: string; emailed: boolean };
 
@@ -157,7 +158,12 @@ function ManageUserDialog({
   const iam = iamUi.useModule(iamContract);
   const refreshAccess = useRefreshAccess();
   const refresh = () => Promise.all([iam.queries.users.invalidate(), refreshAccess()]);
-  const [roles, setRoles] = useState(user.roles.filter((r) => r.source === "manual").map((r) => r.name));
+  // Roles granted at the IdP are edited here too when the app can grant them there.
+  const editsIdpRoles = settings?.rolesAtIdp === true;
+  const [roles, setRoles] = useState(() => {
+    const idp = user.roles.filter((r) => r.source === "oidc").map((r) => r.name);
+    return editsIdpRoles && idp.length > 0 ? idp : user.roles.filter((r) => r.source === "manual").map((r) => r.name);
+  });
   const [newPassword, setNewPassword] = useState<string | null>(null);
   const saveRoles = iam.commands.setUserRoles.useMutation({ onSuccess: refresh });
   const disable = iam.commands.disableUser.useMutation({ onSuccess: refresh });
@@ -201,7 +207,11 @@ function ManageUserDialog({
         {canRoles && (
           <section className="flex flex-col gap-2">
             <h3 className="text-sm font-medium">Roles</h3>
-            {fromIdp.length > 0 && <p className="text-xs text-muted-foreground">From the identity provider (changed there): {fromIdp.join(", ")}.</p>}
+            {editsIdpRoles ? (
+              <p className="text-xs text-muted-foreground">Granted at the identity provider too. A change made there shows here at their next login.</p>
+            ) : (
+              fromIdp.length > 0 && <p className="text-xs text-muted-foreground">From the identity provider (changed there): {fromIdp.join(", ")}.</p>
+            )}
             <Checklist options={roleOptions} value={roles} onChange={setRoles} />
             <div>
               <Button type="button" size="sm" disabled={saveRoles.isPending} onClick={() => saveRoles.mutate({ userId: user.id, roles })}>
@@ -396,8 +406,8 @@ function CreateUserDialog({ roleOptions, settings, onClose }: { roleOptions: { n
               <DialogDescription>
                 {byInvite
                   ? settings.emailsInvites
-                    ? "They get an email with a link to set up their login. You choose their roles now."
-                    : "You get a link to send them; it sets up their login. You choose their roles now."
+                    ? `They get an email with a link to set up their login. You choose their roles now${settings.rolesAtIdp ? "; they're granted at the identity provider too" : ""}.`
+                    : `You get a link to send them; it sets up their login. You choose their roles now${settings.rolesAtIdp ? "; they're granted at the identity provider too" : ""}.`
                   : "Sets a login password only. The person picks their own vault passphrase on first unlock."}
               </DialogDescription>
             </DialogHeader>
