@@ -183,7 +183,8 @@ function ManageUserDialog({
   const openInvite = user.invite !== null && !user.login;
   const canReinvite = openInvite && mayInvite && settings?.canInvite === true;
   const canRevokeInvite = openInvite && user.invite?.state === "pending" && mayRevokeInvite;
-  const canResetMfa = mayResetMfa && settings?.canResetMfa === true && user.mfa === true;
+  // Kept after a reset (the refreshed list says no factor) so its confirmation stays visible.
+  const canResetMfa = mayResetMfa && settings?.canResetMfa === true && (user.mfa === true || resetMfa.isSuccess);
   const fromIdp = user.roles.filter((r) => r.source === "oidc").map((r) => r.name);
   const error = [saveRoles, disable, enable, revoke, reset, reinvite, revokeInvite, resetMfa].map((m) => errorText(m.error)).find(Boolean);
 
