@@ -115,6 +115,8 @@ export function WeekGrid<E extends WeekGridEvent>({
                   <button
                     key={event.id}
                     type="button"
+                    // Narrow lanes (parallel events) truncate both lines; the tooltip has them in full.
+                    title={[event.title, event.subtitle].filter(Boolean).join("\n")}
                     onClick={() => onSelect?.(event)}
                     className={cn(
                       "absolute overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
