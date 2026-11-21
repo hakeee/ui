@@ -62,11 +62,22 @@ loads them.
     bottom tab bar on phones (the first nav entries, with their `icon`, plus
     a "More" sheet); `askForPassphrase={false}` stops the first-run
     passphrase prompt for apps that work without the vault.
-  - The pieces: `LoginScreen`, `UnlockProvider` / `useUnlock` /
-    `LockedNotice`, `SecurityPage` (passkeys, recovery key, vault
-    passphrase, login password) and its cards.
+  - The pieces: `LoginScreen` (shows an OIDC `login_error`),
+    `UnlockProvider` / `useUnlock` / `LockedNotice`, `SecurityPage`
+    (two-step login, passkeys, recovery key, vault passphrase, login
+    password) and its cards.
+  - Two-step login (vault-service `mfa`): `PlatformApp` shows
+    `MfaVerifyScreen` after the password, or `MfaSetupScreen` when a factor
+    is required and missing (authenticator app with a QR code, or a login
+    passkey; recovery codes shown once). `TwoStepLoginCard` on the Security
+    page manages factors (each change asks for the login password) and
+    hides itself without `mfa` on the server.
+  - Invites: a page at `…/invite/<token>` shows `InviteScreen` instead of the
+    app: set a password (single) or continue to the IdP (OIDC). Static
+    hosting must serve `index.html` for that path.
 - **`@hakeee/ui/access`**: `accessWeb`, the admin pages for module-host's
-  built-in IAM (Users, Roles, Policies). Install it in
+  built-in IAM (Users, Roles, Policies). Users invites people when IAM has
+  `invites` (status, new link, revoke) and resets two-step login. Install it in
   `createWebHost({ modules })`.
 
 ```tsx

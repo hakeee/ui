@@ -14,7 +14,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Ellipsis, Lock, LockOpen, LogOut } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button, ConfirmProvider, PaletteSelect, Sheet, SheetContent, SheetHeader, SheetTitle, ThemeToggle, cn, type PaletteOption } from "../index.js";
+import { InviteScreen } from "./Invite.js";
+import { inviteTokenFrom } from "./inviteLink.js";
 import { LoginScreen } from "./Login.js";
+import { MfaSetupScreen, MfaVerifyScreen } from "./TwoStep.js";
 import { UnlockProvider, useUnlock, type VaultInfo } from "./Unlock.js";
 
 export interface PlatformAppProps {
@@ -66,12 +69,22 @@ export function PlatformApp({
   askForPassphrase = true,
 }: PlatformAppProps) {
   const gate = useVaultGate();
+  // An invite link (`/invite/<token>`) shows its own screen until it's accepted or left.
+  const [inviteToken, setInviteToken] = useState(() => inviteTokenFrom(window.location.pathname));
+  const leaveInvite = () => {
+    window.history.replaceState(null, "", window.location.pathname.replace(/invite\/[^/]+\/?$/, ""));
+    setInviteToken(null);
+  };
+  if (gate.status === "pending") return null;
+  if (gate.status === "offline") return <main className="p-6">Can't reach the server.</main>;
+  if (inviteToken) {
+    return <InviteScreen token={inviteToken} loggedIn={gate.status !== "login-required"} oidcProvider={oidcProvider} onDone={leaveInvite} />;
+  }
   switch (gate.status) {
-    case "pending":
-      return null;
-    case "offline":
-      return <main className="p-6">Can't reach the server.</main>;
     case "login-required":
+      // After the password: the second step, or setting one up when it's required and missing.
+      if (gate.mfa === "verify") return <MfaVerifyScreen />;
+      if (gate.mfa === "setup") return <MfaSetupScreen />;
       return <LoginScreen mode={gate.mode} oidcProvider={oidcProvider} />;
     case "vault-locked":
     case "unlocked": {

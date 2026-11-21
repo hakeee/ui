@@ -6,6 +6,7 @@ import {
   AlertDescription,
   Badge,
   Button,
+  CopyField,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,6 +15,7 @@ import {
   DialogTitle,
   Input,
   Label,
+  SegmentedControl,
   Table,
   TableBody,
   TableCell,
@@ -30,9 +32,31 @@ type User = {
   displayName: string;
   root: boolean;
   disabled: boolean;
+  login: boolean;
+  mfa: boolean | null;
+  invite: { state: "pending" | "expired" | "accepted" | "revoked"; expiresAt: string } | null;
   roles: { name: string; source: "manual" | "oidc" }[];
 };
-type Settings = { canCreateUsers: boolean; canDisableUsers: boolean; canResetPasswords: boolean; canRevokeSessions: boolean };
+type Settings = {
+  canCreateUsers: boolean;
+  canDisableUsers: boolean;
+  canResetPasswords: boolean;
+  canRevokeSessions: boolean;
+  canInvite: boolean;
+  emailsInvites: boolean;
+  canResetMfa: boolean;
+};
+type SentInvite = { link: string | null; expiresAt: string; emailed: boolean };
+
+/** Badges for where someone's login stands: an open or lapsed invite, or no second factor yet. */
+function loginBadges(u: User) {
+  if (u.invite && !u.login) {
+    if (u.invite.state === "pending") return <Badge variant="outline" title={`Link works until ${formatDate(u.invite.expiresAt)}`}>invited</Badge>;
+    return <Badge variant="destructive">{u.invite.state === "expired" ? "invite expired" : "invite revoked"}</Badge>;
+  }
+  if (u.login && u.mfa === false) return <Badge variant="outline" title="Asked to set up two-step login at the next login, where it's required">no two-step login</Badge>;
+  return null;
+}
 
 export function UsersPage() {
   const iam = iamUi.useModule(iamContract);
@@ -40,12 +64,15 @@ export function UsersPage() {
   const roles = iam.queries.roles.useQuery({});
   const settings = iam.queries.settings.useQuery({});
   const unlocked = useVaultUnlocked();
-  const canCreate = useCan("iam:createUser") && settings.data?.canCreateUsers === true;
+  const canCreate = useCan("iam:createUser") && (settings.data?.canCreateUsers === true || settings.data?.canInvite === true);
   const canManage = [
     useCan("iam:setUserRoles"),
     useCan("iam:disableUser"),
     useCan("iam:resetPassword"),
     useCan("iam:revokeSessions"),
+    useCan("iam:invite"),
+    useCan("iam:revokeInvite"),
+    useCan("iam:resetMfa"),
   ].some(Boolean);
   const [editing, setEditing] = useState<User | null>(null);
   const [creating, setCreating] = useState(false);
@@ -57,7 +84,7 @@ export function UsersPage() {
       actions={
         canCreate && (
           <Button type="button" size="sm" disabled={!unlocked} onClick={() => setCreating(true)}>
-            Create account
+            {settings.data?.canInvite ? "Invite user" : "Create account"}
           </Button>
         )
       }
@@ -81,6 +108,7 @@ export function UsersPage() {
                 <div className="flex flex-wrap gap-1">
                   {u.root && <Badge>root</Badge>}
                   {u.disabled && <Badge variant="destructive">disabled</Badge>}
+                  {loginBadges(u)}
                   {u.roles.map((r) => (
                     <Badge key={`${r.name}-${r.source}`} variant={r.source === "oidc" ? "outline" : "secondary"} title={r.source === "oidc" ? "From the identity provider" : undefined}>
                       {r.name}
@@ -109,7 +137,7 @@ export function UsersPage() {
           onClose={() => setEditing(null)}
         />
       )}
-      {creating && <CreateUserDialog roleOptions={roleOptions} onClose={() => setCreating(false)} />}
+      {creating && settings.data && <CreateUserDialog roleOptions={roleOptions} settings={settings.data} onClose={() => setCreating(false)} />}
     </AccessLayout>
   );
 }
@@ -136,17 +164,28 @@ function ManageUserDialog({
   const enable = iam.commands.enableUser.useMutation({ onSuccess: refresh });
   const revoke = iam.commands.revokeSessions.useMutation();
   const reset = iam.commands.resetPassword.useMutation();
+  const reinvite = iam.commands.invite.useMutation({ onSuccess: refresh });
+  const revokeInvite = iam.commands.revokeInvite.useMutation({ onSuccess: refresh });
+  const resetMfa = iam.commands.resetMfa.useMutation({ onSuccess: refresh });
   // Every hook called every render (no short-circuiting), then combined.
   const canRoles = useCan("iam:setUserRoles");
   const mayDisable = useCan("iam:disableUser");
   const mayEnable = useCan("iam:enableUser");
   const mayReset = useCan("iam:resetPassword");
   const mayRevoke = useCan("iam:revokeSessions");
+  const mayInvite = useCan("iam:invite");
+  const mayRevokeInvite = useCan("iam:revokeInvite");
+  const mayResetMfa = useCan("iam:resetMfa");
   const canDisable = mayDisable && mayEnable && settings?.canDisableUsers === true;
   const canReset = mayReset && settings?.canResetPasswords === true;
   const canRevoke = mayRevoke && settings?.canRevokeSessions === true;
+  // An invite matters until they've logged in once; after that it's history.
+  const openInvite = user.invite !== null && !user.login;
+  const canReinvite = openInvite && mayInvite && settings?.canInvite === true;
+  const canRevokeInvite = openInvite && user.invite?.state === "pending" && mayRevokeInvite;
+  const canResetMfa = mayResetMfa && settings?.canResetMfa === true && user.mfa === true;
   const fromIdp = user.roles.filter((r) => r.source === "oidc").map((r) => r.name);
-  const error = [saveRoles, disable, enable, revoke, reset].map((m) => errorText(m.error)).find(Boolean);
+  const error = [saveRoles, disable, enable, revoke, reset, reinvite, revokeInvite, resetMfa].map((m) => errorText(m.error)).find(Boolean);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -168,6 +207,59 @@ function ManageUserDialog({
                 {saveRoles.isSuccess ? "Saved" : "Save roles"}
               </Button>
             </div>
+          </section>
+        )}
+
+        {(canReinvite || canRevokeInvite) && (
+          <section className="flex flex-col gap-2 border-t border-border pt-3">
+            <h3 className="text-sm font-medium">Invite</h3>
+            <p className="text-xs text-muted-foreground">
+              {user.invite?.state === "pending"
+                ? `Not accepted yet. The link works until ${formatDate(user.invite.expiresAt)}.`
+                : user.invite?.state === "expired"
+                  ? "The link expired before they used it."
+                  : "The link was revoked."}
+            </p>
+            {reinvite.data ? (
+              <InviteSent invite={reinvite.data} email={user.email} />
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {canReinvite && (
+                  <Button type="button" variant="secondary" size="sm" disabled={reinvite.isPending} onClick={() => reinvite.mutate({ userId: user.id })}>
+                    {settings?.emailsInvites ? "Send a new invite" : "New invite link"}
+                  </Button>
+                )}
+                {canRevokeInvite && (
+                  <Button type="button" variant="secondary" size="sm" disabled={revokeInvite.isPending} onClick={() => revokeInvite.mutate({ userId: user.id })}>
+                    Revoke invite
+                  </Button>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {canResetMfa && (
+          <section className="flex flex-col gap-2 border-t border-border pt-3">
+            <h3 className="text-sm font-medium">Two-step login</h3>
+            {resetMfa.isSuccess ? (
+              <p className="text-xs text-muted-foreground">Reset. They're logged out and set up a new second step at their next login.</p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">For someone who lost their phone and recovery codes. Make sure it's really them asking.</p>
+                <div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={resetMfa.isPending}
+                    onClick={() => confirm(`Reset ${user.displayName}'s two-step login? Their authenticator apps, passkeys and recovery codes stop working.`) && resetMfa.mutate({ userId: user.id })}
+                  >
+                    Reset two-step login
+                  </Button>
+                </div>
+              </>
+            )}
           </section>
         )}
 
@@ -242,17 +334,33 @@ function ManageUserDialog({
   );
 }
 
-function CreateUserDialog({ roleOptions, onClose }: { roleOptions: { name: string; hint?: string }[]; onClose: () => void }) {
+/** What an admin sees after inviting: sent, or the link to pass on (shown once). */
+function InviteSent({ invite, email }: { invite: SentInvite; email: string }) {
+  if (invite.emailed) return <p className="text-sm text-muted-foreground">Invite emailed to {email}. The link works once, until {formatDate(invite.expiresAt)}.</p>;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-muted-foreground">
+        Send {email} this link yourself. It works once, until {formatDate(invite.expiresAt)}, and isn't shown again.
+      </p>
+      {invite.link && <CopyField value={invite.link} label="Copy link" />}
+    </div>
+  );
+}
+
+function CreateUserDialog({ roleOptions, settings, onClose }: { roleOptions: { name: string; hint?: string }[]; settings: Settings; onClose: () => void }) {
   const iam = iamUi.useModule(iamContract);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  // Inviting is the normal way: the person sets their own password (and two-step login). A temporary password is the fallback.
+  const [how, setHow] = useState<"invite" | "password">(settings.canInvite ? "invite" : "password");
   const [password, setPassword] = useState(() => temporaryPassword());
   const [roles, setRoles] = useState<string[]>(roleOptions.some((r) => r.name === "member") ? ["member"] : []);
   const create = iam.commands.createUser.useMutation({ onSuccess: () => void iam.queries.users.invalidate() });
+  const byInvite = how === "invite";
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    create.mutate({ email, password, displayName: displayName || undefined, roles });
+    create.mutate({ email, ...(byInvite ? {} : { password }), displayName: displayName || undefined, roles });
   }
 
   return (
@@ -261,13 +369,19 @@ function CreateUserDialog({ roleOptions, onClose }: { roleOptions: { name: strin
         {create.isSuccess ? (
           <>
             <DialogHeader>
-              <DialogTitle>Account created</DialogTitle>
-              <DialogDescription>
-                Give {email} this temporary password. They can change it on the Security page, and they'll choose their own vault passphrase -
-                you can't read their data.
-              </DialogDescription>
+              <DialogTitle>{create.data.invite ? "Invited" : "Account created"}</DialogTitle>
+              {!create.data.invite && (
+                <DialogDescription>
+                  Give {email} this temporary password. They can change it on the Security page, and they'll choose their own vault passphrase -
+                  you can't read their data.
+                </DialogDescription>
+              )}
             </DialogHeader>
-            <code className="select-all rounded-md border border-border bg-muted p-3 text-center font-mono text-sm">{password}</code>
+            {create.data.invite ? (
+              <InviteSent invite={create.data.invite} email={email} />
+            ) : (
+              <code className="select-all rounded-md border border-border bg-muted p-3 text-center font-mono text-sm">{password}</code>
+            )}
             <DialogFooter>
               <Button type="button" onClick={onClose}>
                 Done
@@ -277,20 +391,39 @@ function CreateUserDialog({ roleOptions, onClose }: { roleOptions: { name: strin
         ) : (
           <form onSubmit={submit} className="flex flex-col gap-3">
             <DialogHeader>
-              <DialogTitle>Create account</DialogTitle>
-              <DialogDescription>Sets a login password only. The person picks their own vault passphrase on first unlock.</DialogDescription>
+              <DialogTitle>{settings.canInvite ? "Invite user" : "Create account"}</DialogTitle>
+              <DialogDescription>
+                {byInvite
+                  ? settings.emailsInvites
+                    ? "They get an email with a link to set up their login. You choose their roles now."
+                    : "You get a link to send them; it sets up their login. You choose their roles now."
+                  : "Sets a login password only. The person picks their own vault passphrase on first unlock."}
+              </DialogDescription>
             </DialogHeader>
+            {settings.canInvite && settings.canCreateUsers && (
+              <SegmentedControl
+                aria-label="How they get in"
+                value={how}
+                onValueChange={setHow}
+                options={[
+                  { value: "invite", label: "Invite link" },
+                  { value: "password", label: "Temporary password" },
+                ]}
+              />
+            )}
             <Input type="email" required autoFocus placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Input placeholder="Display name (optional)" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="temp-password">Temporary password</Label>
-              <div className="flex gap-2">
-                <Input id="temp-password" className="font-mono" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
-                <Button type="button" variant="secondary" onClick={() => setPassword(temporaryPassword())}>
-                  New
-                </Button>
+            {!byInvite && (
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="temp-password">Temporary password</Label>
+                <div className="flex gap-2">
+                  <Input id="temp-password" className="font-mono" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <Button type="button" variant="secondary" onClick={() => setPassword(temporaryPassword())}>
+                    New
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
             <Label>Roles</Label>
             <Checklist options={roleOptions} value={roles} onChange={setRoles} />
             {create.isError && (
@@ -302,8 +435,8 @@ function CreateUserDialog({ roleOptions, onClose }: { roleOptions: { name: strin
               <Button type="button" variant="secondary" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={create.isPending || !email || password.length < 8}>
-                Create
+              <Button type="submit" disabled={create.isPending || !email || (!byInvite && password.length < 8)}>
+                {create.isPending ? "Working…" : byInvite ? (settings.emailsInvites ? "Send invite" : "Create invite link") : "Create"}
               </Button>
             </DialogFooter>
           </form>
@@ -311,6 +444,10 @@ function CreateUserDialog({ roleOptions, onClose }: { roleOptions: { name: strin
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function temporaryPassword(): string {

@@ -33,33 +33,33 @@ import type { ReactNode } from "react";
 import { useState, type FormEvent } from "react";
 import { clearRecovered, wasRecovered } from "./recovered.js";
 import { AddPasskey } from "./AddPasskey.js";
+import { TwoStepLoginCard } from "./TwoStep.js";
 import { LockedNotice } from "./Unlock.js";
 
-/** The ways this account can unlock its vault. Managing them needs the vault unlocked. */
+/**
+ * Two-step login (works locked: it's about logging in, not the vault), then
+ * the ways this account can unlock its vault, which need it unlocked.
+ */
 export function SecurityPage() {
   return (
-    <WhenUnlocked
-      fallback={
-        <main className="flex flex-col items-center gap-4 p-6">
-          <h1 className="w-full max-w-xl text-2xl font-semibold">Security</h1>
-          <LockedNotice what="your passkeys, recovery key and passphrase settings" />
-        </main>
-      }
-    >
-      <UnlockedSecurityPage />
-    </WhenUnlocked>
+    <main className="flex flex-col items-center gap-4 p-6">
+      <h1 className="w-full max-w-xl text-2xl font-semibold">Security</h1>
+      <TwoStepLoginCard />
+      <WhenUnlocked fallback={<LockedNotice what="your passkeys, recovery key and passphrase settings" />}>
+        <UnlockedSecurityCards />
+      </WhenUnlocked>
+    </main>
   );
 }
 
-function UnlockedSecurityPage() {
+function UnlockedSecurityCards() {
   const methods = useVaultMethods();
   const list = methods.data?.methods ?? [];
   const passkeys = list.filter((m) => m.method === "passkey");
   const recovery = list.find((m) => m.method === "recovery");
 
   return (
-    <main className="flex flex-col items-center gap-4 p-6">
-      <h1 className="w-full max-w-xl text-2xl font-semibold">Security</h1>
+    <>
       {methods.isError && (
         <Alert variant="destructive" className="max-w-xl">
           <AlertDescription>Couldn't load your unlock methods.</AlertDescription>
@@ -69,7 +69,7 @@ function UnlockedSecurityPage() {
       <RecoveryKeyCard existing={recovery} loading={methods.isPending} />
       <PassphraseCard />
       <LoginPasswordCard />
-    </main>
+    </>
   );
 }
 

@@ -43,14 +43,15 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.468.0",
+    "qrcode-generator": "1.4.4",
     "tailwind-merge": "^2.5.0"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18",
     "@hakeee/module-host": "*",
     "@hakeee/vault-service-react": "*",
-    "@tanstack/react-query": "^5.0.0"
+    "@tanstack/react-query": "^5.0.0",
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "devDependencies": {
     "@hakeee/module-host": "link:../module-host",

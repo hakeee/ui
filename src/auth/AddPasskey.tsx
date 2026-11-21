@@ -36,8 +36,8 @@ export function AddPasskey() {
   );
 }
 
-/** Shown in the vault's method list, so something that tells devices apart. */
-function deviceLabel(): string {
+/** Shown in method lists (vault passkeys, login passkeys), so something that tells devices apart. */
+export function deviceLabel(): string {
   const ua = navigator.userAgent;
   const browser = /Firefox\//.test(ua) ? "Firefox" : /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
   const os = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS X/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
