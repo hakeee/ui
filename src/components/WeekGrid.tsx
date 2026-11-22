@@ -63,6 +63,8 @@ export function WeekGrid<E extends WeekGridEvent>({
   endHour = 21,
   hourHeight = 48,
   onSelect,
+  onSlotClick,
+  slotMinutes = 30,
   locale,
   className,
 }: {
@@ -73,6 +75,12 @@ export function WeekGrid<E extends WeekGridEvent>({
   /** Pixels per hour. */
   hourHeight?: number;
   onSelect?(event: E): void;
+  /**
+   * Clicking an empty spot of a day (not an event): the day and the time there, rounded down to `slotMinutes`
+   * (default 30), e.g. to create something at that time like a desktop calendar does.
+   */
+  onSlotClick?(date: string, time: string): void;
+  slotMinutes?: number;
   locale?: string;
   className?: string;
 }) {
@@ -103,9 +111,24 @@ export function WeekGrid<E extends WeekGridEvent>({
           const dayEvents = events.filter((e) => e.date === day);
           const lanes = layout(dayEvents);
           return (
-            <div key={day} className="relative border-l border-border" style={{ height: hours.length * hourHeight }}>
+            <div
+              key={day}
+              className={cn("relative border-l border-border", onSlotClick && "cursor-cell")}
+              style={{ height: hours.length * hourHeight }}
+              onClick={
+                onSlotClick &&
+                ((e) => {
+                  // Events are buttons on top; only the empty background counts.
+                  if (e.target !== e.currentTarget && !(e.target as HTMLElement).dataset.slot) return;
+                  const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+                  const minutes = Math.floor(((first * 60 + (y / hourHeight) * 60) / slotMinutes)) * slotMinutes;
+                  const clamped = Math.max(0, Math.min(minutes, 24 * 60 - slotMinutes));
+                  onSlotClick(day, `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`);
+                })
+              }
+            >
               {hours.map((h) => (
-                <div key={h} className="absolute inset-x-0 border-t border-border/60" style={{ top: (h - first) * hourHeight }} />
+                <div key={h} data-slot="1" className="pointer-events-none absolute inset-x-0 border-t border-border/60" style={{ top: (h - first) * hourHeight }} />
               ))}
               {dayEvents.map((event) => {
                 const place = lanes.get(event.id) ?? { lane: 0, lanes: 1 };
@@ -117,7 +140,10 @@ export function WeekGrid<E extends WeekGridEvent>({
                     type="button"
                     // Narrow lanes (parallel events) truncate both lines; the tooltip has them in full.
                     title={[event.title, event.subtitle].filter(Boolean).join("\n")}
-                    onClick={() => onSelect?.(event)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect?.(event);
+                    }}
                     className={cn(
                       "absolute overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       colored && "border-transparent hover:brightness-110",
