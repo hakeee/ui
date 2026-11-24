@@ -1,0 +1,70 @@
+# Typecheck, test and build on every push. A v* tag also packs the package(s) and attaches the
+# tarballs to a GitHub release: that release URL is what apps put in their package.json.
+name: ci
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the release, on tags only
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: ui
+      # Linked as a dev dependency (link:../vault-service), so it sits next to this repo, as on a dev machine.
+      - uses: actions/checkout@v5
+        with:
+          repository: hakeee/vault-service
+          path: vault-service
+      # Linked as a dev dependency (link:../module-host), so it sits next to this repo, as on a dev machine.
+      - uses: actions/checkout@v5
+        with:
+          repository: hakeee/module-host
+          path: module-host
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Build vault-service
+        working-directory: vault-service
+        run: pnpm install --frozen-lockfile && pnpm run build
+      - name: Build module-host
+        working-directory: module-host
+        run: pnpm install --frozen-lockfile && pnpm run build
+      - name: Install
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: ui
+        run: pnpm run typecheck
+      - name: Test
+        working-directory: ui
+        run: pnpm test
+      - name: Build
+        working-directory: ui
+        run: pnpm run build
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: ui
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/out"
+          for dir in .; do
+            version=$(jq -r .version "$dir/package.json")
+            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::$dir/package.json says $version, the tag says $GITHUB_REF_NAME"; exit 1
+            fi
+            (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/out")
+          done
+          # A release is never replaced: apps' lockfiles hold each tarball's integrity hash.
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/out/*.tgz --verify-tag --title "$GITHUB_REF_NAME" --generate-notes

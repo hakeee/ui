@@ -11,6 +11,18 @@ instead of N times; less "every project can tweak its own copy") was a
 deliberate choice, not an accident - see the repo this was split out of if
 you want the reasoning.
 
+## Installing
+
+Not on npm. Each `v*` tag builds release tarballs on GitHub; depend on the release URL:
+
+```json
+"@hakeee/ui": "https://github.com/hakeee/ui/releases/download/v0.1.0/hakeee-ui-0.1.0.tgz"
+```
+
+Apps that work on this repo alongside install it from a sibling checkout instead (`link:`). The
+release tarballs hold only the build: their `exports` point at `dist/`, while a linked checkout
+resolves the `development` condition to `src/`.
+
 ## Using it
 
 ```ts
@@ -99,3 +111,7 @@ the app's single copy of each. Their React contexts only work that way.
 
 See `ROADMAP.md` - HodyPesTracker integration, then Ebba's Tailwind
 migration, in that order (lower-risk consumer first).
+
+## License
+
+MIT, see [LICENSE](./LICENSE).

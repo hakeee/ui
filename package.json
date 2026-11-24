@@ -1,7 +1,6 @@
 {
   "name": "@hakeee/ui",
   "version": "0.1.0",
-  "private": true,
   "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=24"
@@ -84,5 +83,10 @@
     "@tanstack/react-query": {
       "optional": true
     }
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hakeee/ui.git"
+  },
+  "license": "MIT"
 }
